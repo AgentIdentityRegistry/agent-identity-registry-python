@@ -23,10 +23,10 @@ from agent_identity_registry.exceptions import (
     ValidationError,
 )
 from agent_identity_registry.models import (
-    Agent,
-    AgentSummary,
     AdminRecentItem,
     AdminStats,
+    Agent,
+    AgentSummary,
     Creator,
     DidDocument,
     DidVerificationMethod,
@@ -40,29 +40,26 @@ from agent_identity_registry.models import (
 
 __version__ = "0.1.0"
 __all__ = [
-    # Client
     "AIRClient",
-    # Exceptions
-    "AirError",
-    "AgentNotFoundError",
-    "AuthenticationError",
-    "ConflictError",
-    "NetworkError",
-    "RateLimitedError",
-    "ServerError",
-    "ValidationError",
-    # Models
-    "Agent",
-    "AgentSummary",
     "AdminRecentItem",
     "AdminStats",
+    "Agent",
+    "AgentNotFoundError",
+    "AgentSummary",
+    "AirError",
+    "AuthenticationError",
+    "ConflictError",
     "Creator",
     "DidDocument",
     "DidVerificationMethod",
     "Health",
     "NameCheck",
+    "NetworkError",
+    "RateLimitedError",
     "RegistrationResult",
+    "ServerError",
     "TrustComponents",
     "TrustScore",
     "UpdateResult",
+    "ValidationError",
 ]

@@ -14,7 +14,6 @@ from agent_identity_registry import (
     ValidationError,
 )
 
-
 # ----- happy path: every endpoint round-trips through MockTransport -----
 
 
