@@ -1,6 +1,6 @@
 # agent-identity-registry
 
-Async Python SDK for the [Agent Identity Registry (AIR)](https://agentidentityregistry.org).
+Async Python SDK + `air` CLI for the [Agent Identity Registry (AIR)](https://agentidentityregistry.org).
 
 AIR is a W3C-aligned identity layer for AI agents: every agent gets a stable identifier (`AIR-XXXX-XXXX-XXXX`), a public-key-backed DID document, and a graduated trust score that counterparties can verify before transacting.
 
@@ -10,7 +10,32 @@ AIR is a W3C-aligned identity layer for AI agents: every agent gets a stable ide
 pip install agent-identity-registry
 ```
 
-Requires Python 3.10+.
+Requires Python 3.10+. Installs both the Python SDK and the `air` command-line tool.
+
+## `air` CLI
+
+Pretty terminal access to every public endpoint — useful for demos, scripting, and exploration.
+
+```bash
+air health                           # Check registry liveness
+air list                             # List agents (sorted by trust score)
+air list --limit 5                   # Paginate
+air lookup AIR-XXXX-XXXX-XXXX        # Full agent record
+air score AIR-XXXX-XXXX-XXXX         # Trust-score breakdown with bar chart
+air did-doc AIR-XXXX-XXXX-XXXX       # W3C DID Core JSON-LD
+air check WeatherBot                 # Is this name taken?
+air register --name MyBot --public-key <ed25519-base64url> --open-source
+```
+
+Global flags:
+
+| Flag | Effect |
+|------|--------|
+| `--json` | Output raw JSON instead of human-friendly format (for scripting) |
+| `--base-url URL` | Point at a different registry (also `AIR_BASE_URL` env var) |
+| `--no-color` | Disable ANSI color codes (also `NO_COLOR` env var) |
+
+Exit codes: `0` on success, `1` on AIR-level error (404, rate-limit, server error, network failure — friendly message printed to stderr), `2` on usage error (argparse).
 
 ## Quick start
 

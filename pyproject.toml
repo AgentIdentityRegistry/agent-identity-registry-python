@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-identity-registry"
-version = "0.1.0"
-description = "Python SDK for the Agent Identity Registry (AIR) — agentidentityregistry.org"
+version = "0.2.0"
+description = "Python SDK + CLI for the Agent Identity Registry (AIR) — agentidentityregistry.org"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
@@ -38,10 +38,13 @@ dev = [
     "mypy>=1.10",
 ]
 
+[project.scripts]
+air = "agent_identity_registry.cli:main"
+
 [project.urls]
 Homepage = "https://agentidentityregistry.org"
-Repository = "https://github.com/AgentIdentityRegistry/air-site"
-Issues = "https://github.com/AgentIdentityRegistry/air-site/issues"
+Repository = "https://github.com/AgentIdentityRegistry/agent-identity-registry-python"
+Issues = "https://github.com/AgentIdentityRegistry/agent-identity-registry-python/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agent_identity_registry"]
