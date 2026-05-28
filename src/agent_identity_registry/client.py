@@ -27,7 +27,7 @@ from typing import Any
 
 import httpx
 
-from agent_identity_registry._retry import RetryConfig, RetryTransport
+from agent_identity_registry._retry import DEFAULT_RETRY, RetryConfig, RetryTransport
 from agent_identity_registry.exceptions import (
     AuthenticationError,
     NetworkError,
@@ -62,15 +62,14 @@ class AIRClient:
         admin_key: str | None = None,
         timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
-        retry_config: RetryConfig | None = RetryConfig(),
+        retry_config: RetryConfig | None = DEFAULT_RETRY,
     ) -> None:
         # Strip trailing slash so URL joining stays predictable.
         self._base_url = base_url.rstrip("/")
         self._admin_key = admin_key
         # Compose retry on top of whatever transport was passed (or default).
         # `retry_config=None` is the explicit opt-out — no wrapper at all.
-        # Default = sensible auto-retry (see RetryConfig docstring).
-        # Using a frozen-dataclass default is safe because RetryConfig is immutable.
+        # Default = the module-level DEFAULT_RETRY singleton (frozen, immutable).
         inner_transport = transport if transport is not None else httpx.AsyncHTTPTransport()
         if retry_config is not None and retry_config.max_retries > 0:
             inner_transport = RetryTransport(inner_transport, retry_config)

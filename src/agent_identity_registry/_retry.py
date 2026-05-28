@@ -91,6 +91,12 @@ class RetryConfig:
 # Sentinel for "no retry behavior" — equivalent to not wrapping at all.
 NO_RETRY = RetryConfig(max_retries=0)
 
+# Module-level default singleton. Lives here (not at the call site) so the
+# constructor signature can read `retry_config: RetryConfig | None = DEFAULT_RETRY`
+# without ruff's B008 firing on a function call in a default. Safe to share
+# across clients because RetryConfig is frozen + immutable.
+DEFAULT_RETRY = RetryConfig()
+
 
 class RetryTransport(httpx.AsyncBaseTransport):
     """Async httpx transport that retries transient failures.
@@ -158,11 +164,13 @@ class RetryTransport(httpx.AsyncBaseTransport):
     def _should_retry_network_error(self, request: httpx.Request, attempt: int) -> bool:
         if attempt >= self._config.max_retries:
             return False
-        if self._config.idempotent_only and request.method.upper() not in _IDEMPOTENT_METHODS:
-            # POST on network error: server MIGHT have accepted it. Don't
-            # retry — caller will get NetworkError and decide consciously.
-            return False
-        return True
+        # POST on network error: server MIGHT have accepted it. Don't retry —
+        # caller will get NetworkError and decide consciously. Equivalent to:
+        # `if idempotent_only and method is non-idempotent: return False; return True`
+        return not (
+            self._config.idempotent_only
+            and request.method.upper() not in _IDEMPOTENT_METHODS
+        )
 
     async def _sleep_for_attempt(self, attempt: int, *, retry_after: float | None) -> None:
         """Sleep before retry #attempt+1. Honors server Retry-After when present."""
@@ -173,7 +181,7 @@ class RetryTransport(httpx.AsyncBaseTransport):
         if self._config.jitter:
             # Full jitter in the [0.5x, 1.5x] band — small enough to keep the
             # exponential shape, big enough to desync many clients.
-            delay *= random.uniform(0.5, 1.5)  # noqa: S311 — non-crypto use
+            delay *= random.uniform(0.5, 1.5)
         if retry_after is not None and retry_after > delay:
             # Server explicitly told us when to retry. Don't out-clever it.
             delay = retry_after

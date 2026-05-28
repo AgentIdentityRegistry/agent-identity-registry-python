@@ -28,7 +28,6 @@ from agent_identity_registry import (
 )
 from agent_identity_registry._retry import NO_RETRY, RetryTransport, _parse_retry_after
 
-
 # ---- helpers -----------------------------------------------------------
 
 
