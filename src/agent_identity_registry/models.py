@@ -12,9 +12,9 @@ versions — forward-compatibility wins over strictness here.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 
 class _AirModel(BaseModel):
@@ -191,6 +191,51 @@ class DidDocument(_AirModel):
     authentication: list[str]
     assertion_method: list[str] = Field(alias="assertionMethod")
     service: list[DidService] = Field(default_factory=list)
+
+
+# ============================================================
+# SERVICE (A2A spec §12 — W3C DID Core service entry)
+# ============================================================
+
+
+class Service(BaseModel):
+    """A W3C DID Core service entry — describes an endpoint at which an agent can be reached
+    for a specific service type.
+
+    Per A2A spec §12, `type` is an open string with reserved prefixes (A2A*, AIR*, DIDComm*).
+    Custom service types should use namespaced-URI form to avoid collisions.
+
+    Unlike the rest of the SDK models, `Service` uses `extra='forbid'` to match A2A spec
+    strictness — unknown fields in a service entry are a contract violation, not a forward-
+    compatibility signal.
+    """
+
+    id: Optional[str] = Field(default=None, description="W3C did-document fragment ID (e.g. '#a2a')")
+    type: str = Field(description="Service type — e.g. 'A2AInbox', 'AIRTrustScore'")
+    serviceEndpoint: HttpUrl = Field(description="The URL at which this service is reached")
+
+    model_config = ConfigDict(extra="forbid")  # strict — reject unknown fields
+
+
+# ============================================================
+# AGENT RECORD (v0.4.0+: service_endpoints field added)
+# ============================================================
+
+
+class AgentRecord(_AirModel):
+    """Unified agent record that carries both the core identity fields and, from SDK v0.4.0
+    onwards, an optional list of A2A service endpoints.
+
+    `service_endpoints` is absent from JSON when None (serialization_alias not set;
+    use `model.model_dump(exclude_none=True)` for clean round-trips).
+    """
+
+    air_id: str
+    name: str
+    service_endpoints: Optional[List[Service]] = Field(
+        default=None,
+        description="A2A service endpoint list (added in SDK v0.4.0, A2A spec §12).",
+    )
 
 
 # ============================================================

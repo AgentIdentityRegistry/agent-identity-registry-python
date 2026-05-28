@@ -9,16 +9,21 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import pytest
+from pydantic import ValidationError as PydanticValidationError
+
 from agent_identity_registry.models import (
     AdminRecent,
     AdminStats,
     Agent,
     AgentList,
+    AgentRecord,
     DidDocument,
     ErrorEnvelope,
     Health,
     NameCheck,
     RegistrationResult,
+    Service,
     TrustScore,
     UpdateResult,
 )
@@ -279,3 +284,83 @@ def test_error_envelope_ignores_unknown_fields():
         {"error": "boom", "some_future_field": "ignored", "another": 42}
     )
     assert e.error == "boom"
+
+
+# ============================================================
+# Service model (v0.4.0 / A2A spec §12)
+# ============================================================
+
+
+def test_service_accepts_valid_a2a_inbox():
+    """Canonical A2A inbox service entry parses cleanly."""
+    svc = Service(type="A2AInbox", serviceEndpoint="https://relay.example.com/inbox")
+    assert svc.type == "A2AInbox"
+    assert str(svc.serviceEndpoint).startswith("https://relay.example.com")
+
+
+def test_service_accepts_custom_type():
+    """Custom (non-reserved-prefix) types like 'OpenClawInbox' are allowed."""
+    svc = Service(type="OpenClawInbox", serviceEndpoint="https://openclaw.example.com/inbox")
+    assert svc.type == "OpenClawInbox"
+
+
+def test_service_accepts_optional_id():
+    """Fragment ID is optional — absent means the service has no DID-doc fragment anchor."""
+    svc_with_id = Service(id="#a2a", type="A2AInbox", serviceEndpoint="https://relay.example.com/inbox")
+    assert svc_with_id.id == "#a2a"
+
+    svc_no_id = Service(type="A2AInbox", serviceEndpoint="https://relay.example.com/inbox")
+    assert svc_no_id.id is None
+
+
+def test_service_rejects_extra_fields():
+    """extra='forbid' means unknown fields raise ValidationError immediately."""
+    with pytest.raises(PydanticValidationError):
+        Service(
+            type="A2AInbox",
+            serviceEndpoint="https://relay.example.com/inbox",
+            extra="anything",
+        )
+
+
+def test_service_rejects_invalid_url():
+    """serviceEndpoint must be a valid HTTP(S) URL — a bare string fails."""
+    with pytest.raises(PydanticValidationError):
+        Service(type="A2AInbox", serviceEndpoint="not-a-url")
+
+
+# ============================================================
+# AgentRecord model (v0.4.0 / service_endpoints field)
+# ============================================================
+
+
+def test_agent_record_round_trip_with_service_endpoints():
+    """AgentRecord serialises service_endpoints to JSON and deserialises back correctly."""
+    record = AgentRecord(
+        air_id="AIR-AAAA-BBBB-CCCC",
+        name="TestBot",
+        service_endpoints=[
+            Service(id="#inbox", type="A2AInbox", serviceEndpoint="https://relay.example.com/inbox"),
+            Service(type="AIRTrustScore", serviceEndpoint="https://agentidentityregistry.org/api/v1/agents/AIR-AAAA-BBBB-CCCC/trust-score"),
+        ],
+    )
+    # round-trip through JSON
+    dumped = record.model_dump(mode="json", exclude_none=True)
+    restored = AgentRecord.model_validate(dumped)
+
+    assert restored.air_id == "AIR-AAAA-BBBB-CCCC"
+    assert len(restored.service_endpoints) == 2
+    assert restored.service_endpoints[0].type == "A2AInbox"
+    assert restored.service_endpoints[1].type == "AIRTrustScore"
+
+
+def test_agent_record_round_trip_without_service_endpoints():
+    """service_endpoints defaults to None and is absent from serialised JSON."""
+    record = AgentRecord(air_id="AIR-XXXX-YYYY-ZZZZ", name="MinimalBot")
+    assert record.service_endpoints is None
+
+    dumped = record.model_dump(mode="json", exclude_none=True)
+    assert "service_endpoints" not in dumped
+
+    restored = AgentRecord.model_validate(dumped)
+    assert restored.service_endpoints is None

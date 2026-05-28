@@ -27,6 +27,7 @@ from agent_identity_registry.models import (
     AdminRecentItem,
     AdminStats,
     Agent,
+    AgentRecord,
     AgentSummary,
     Creator,
     DidDocument,
@@ -34,18 +35,20 @@ from agent_identity_registry.models import (
     Health,
     NameCheck,
     RegistrationResult,
+    Service,
     TrustComponents,
     TrustScore,
     UpdateResult,
 )
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __all__ = [
     "AIRClient",
     "AdminRecentItem",
     "AdminStats",
     "Agent",
     "AgentNotFoundError",
+    "AgentRecord",
     "AgentSummary",
     "AirError",
     "AuthenticationError",
@@ -60,6 +63,7 @@ __all__ = [
     "RegistrationResult",
     "RetryConfig",
     "ServerError",
+    "Service",
     "TrustComponents",
     "TrustScore",
     "UpdateResult",
