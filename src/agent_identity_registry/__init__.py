@@ -11,6 +11,7 @@ Example:
         agent = await client.get_agent("AIR-XXXX-XXXX-XXXX")
 """
 
+from agent_identity_registry._retry import RetryConfig
 from agent_identity_registry.client import AIRClient
 from agent_identity_registry.exceptions import (
     AgentNotFoundError,
@@ -38,7 +39,7 @@ from agent_identity_registry.models import (
     UpdateResult,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __all__ = [
     "AIRClient",
     "AdminRecentItem",
@@ -57,6 +58,7 @@ __all__ = [
     "NetworkError",
     "RateLimitedError",
     "RegistrationResult",
+    "RetryConfig",
     "ServerError",
     "TrustComponents",
     "TrustScore",

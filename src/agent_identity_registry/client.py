@@ -8,10 +8,16 @@ underlying httpx client is closed deterministically:
         agent = await client.get_agent("AIR-XXXX-XXXX-XXXX")
 
 Constructor knobs:
-    base_url   — defaults to the production registry
-    admin_key  — required for delete_agent / get_admin_stats / get_admin_recent
-    timeout    — per-request HTTP timeout (default 30s)
-    transport  — inject httpx.MockTransport in tests; None in production
+    base_url      — defaults to the production registry
+    admin_key     — required for delete_agent / get_admin_stats / get_admin_recent
+    timeout       — per-request HTTP timeout (default 30s)
+    transport     — inject httpx.MockTransport in tests; None in production
+    retry_config  — retry policy on transient failures. Default ON since v0.3:
+                    3 retries with exponential backoff + jitter, retries 429/
+                    502/503/504 and network errors on idempotent methods, but
+                    NEVER retries network errors on POST (no dupe registrations).
+                    Pass `retry_config=None` to disable retries entirely.
+                    Pass a customized `RetryConfig(...)` to tune the policy.
 """
 
 from __future__ import annotations
@@ -21,6 +27,7 @@ from typing import Any
 
 import httpx
 
+from agent_identity_registry._retry import DEFAULT_RETRY, RetryConfig, RetryTransport
 from agent_identity_registry.exceptions import (
     AuthenticationError,
     NetworkError,
@@ -55,14 +62,21 @@ class AIRClient:
         admin_key: str | None = None,
         timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        retry_config: RetryConfig | None = DEFAULT_RETRY,
     ) -> None:
         # Strip trailing slash so URL joining stays predictable.
         self._base_url = base_url.rstrip("/")
         self._admin_key = admin_key
+        # Compose retry on top of whatever transport was passed (or default).
+        # `retry_config=None` is the explicit opt-out — no wrapper at all.
+        # Default = the module-level DEFAULT_RETRY singleton (frozen, immutable).
+        inner_transport = transport if transport is not None else httpx.AsyncHTTPTransport()
+        if retry_config is not None and retry_config.max_retries > 0:
+            inner_transport = RetryTransport(inner_transport, retry_config)
         self._client = httpx.AsyncClient(
             base_url=self._base_url + API_PREFIX,
             timeout=timeout,
-            transport=transport,
+            transport=inner_transport,
         )
 
     # ------------------------------------------------------------------

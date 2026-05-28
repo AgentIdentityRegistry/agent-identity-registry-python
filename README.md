@@ -122,6 +122,32 @@ async with AIRClient() as client:
         print(f"Slow down. Retry in {e.retry_after_seconds}s")
 ```
 
+## Retries
+
+Since **v0.3**, the SDK retries transient failures automatically — 3 attempts with exponential backoff and jitter. Retries cover `429`, `502`, `503`, `504`, and network errors on idempotent methods (`GET`, `PUT`, `DELETE`).
+
+Network errors on `POST /agents/register` are **not** retried by default — a partial network failure could otherwise create duplicate registrations. The `register_agent` call still retries when the server returns a retryable response (`503`, `429`) because in that case the server clearly did not accept the request.
+
+When `Retry-After` is present (e.g. on `429`), the SDK respects it instead of its own backoff.
+
+```python
+from agent_identity_registry import AIRClient, RetryConfig
+
+# Default — works for most callers, no setup needed
+async with AIRClient() as client:
+    await client.get_health()
+
+# Tune the policy
+async with AIRClient(retry_config=RetryConfig(max_retries=5, base_delay=1.0)) as client:
+    await client.get_health()
+
+# Disable retries entirely (v0.2 behavior)
+async with AIRClient(retry_config=None) as client:
+    await client.get_health()
+```
+
+`RetryConfig` is a frozen dataclass — all fields are constructor-only. Knobs: `max_retries`, `base_delay`, `max_delay`, `backoff_multiplier`, `jitter`, `retry_on_status`, `idempotent_only`.
+
 ## License
 
 Apache 2.0 — see the registry repo for full text.
