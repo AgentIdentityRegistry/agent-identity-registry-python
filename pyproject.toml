@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-identity-registry"
-version = "0.2.0"
+version = "0.3.0"
 description = "Python SDK + CLI for the Agent Identity Registry (AIR) — agentidentityregistry.org"
 readme = "README.md"
 requires-python = ">=3.10"
