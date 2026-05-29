@@ -22,10 +22,14 @@ Constructor knobs:
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from types import TracebackType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
+
+if TYPE_CHECKING:
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from agent_identity_registry._retry import DEFAULT_RETRY, RetryConfig, RetryTransport
 from agent_identity_registry.exceptions import (
@@ -38,12 +42,16 @@ from agent_identity_registry.models import (
     AdminStats,
     Agent,
     AgentList,
+    AttestationList,
+    AttestationResult,
     DeleteResult,
     DidDocument,
     ErrorEnvelope,
     Health,
     NameCheck,
+    RecentAttestations,
     RegistrationResult,
+    RevokeResult,
     TrustScore,
     UpdateResult,
 )
@@ -307,6 +315,142 @@ class AIRClient:
             air_id=air_id,
         )
         return UpdateResult.model_validate(data)
+
+    # ------------------------------------------------------------------
+    # Attestations — AIR Verified (Phase 4)
+    # ------------------------------------------------------------------
+
+    async def create_attestation(
+        self,
+        subject_air_id: str,
+        *,
+        attester_air_id: str,
+        attestation_type: str,
+        signed_at: str,
+        signature_multibase: str,
+        agent_secret: str,
+        statement: str = "",
+    ) -> AttestationResult:
+        """POST /agents/{subject_air_id}/attestations — record one attestation.
+
+        Low-level: you supply a `signature_multibase` you computed yourself (e.g.
+        via `signing.sign_attestation`, or an HSM/external signer). For the
+        all-in-one path that signs for you, use `attest()` instead.
+
+        `agent_secret` is the ATTESTER's secret (proves you control the attester
+        record). `signed_at` and `statement` MUST match the values you signed —
+        the registry re-derives and verifies the canonical payload byte-for-byte.
+
+        Raises `ValidationError` (400) on signature failure or bad input,
+        `AuthenticationError` (401) on a wrong secret, `AgentNotFoundError`
+        (404) if the subject doesn't exist, `ConflictError` (409) on a
+        WHOIS-root or eligibility lock.
+        """
+        body: dict[str, Any] = {
+            "attester_air_id": attester_air_id,
+            "attestation_type": attestation_type,
+            "signed_at": signed_at,
+            "signature_multibase": signature_multibase,
+            "statement": statement,
+        }
+        data = await self._request(
+            "POST",
+            f"/agents/{subject_air_id}/attestations",
+            json=body,
+            headers={"X-Agent-Secret": agent_secret},
+            air_id=subject_air_id,
+        )
+        return AttestationResult.model_validate(data)
+
+    async def attest(
+        self,
+        subject_air_id: str,
+        *,
+        attester_air_id: str,
+        attestation_type: str,
+        private_key: Ed25519PrivateKey,
+        agent_secret: str,
+        statement: str = "",
+        signed_at: str | None = None,
+    ) -> AttestationResult:
+        """Sign and submit an attestation in one call (needs the `[signing]` extra).
+
+        Canonicalizes `{attester_air_id, attestation_type, signed_at, statement,
+        subject_air_id}`, Ed25519-signs it with `private_key`, multibase-encodes
+        the signature, then POSTs it via `create_attestation`.
+
+        `signed_at` defaults to the current UTC time in ISO-8601 (`...Z`). The
+        same string is both signed and sent, so they can never drift.
+        """
+        # Imported lazily so the core SDK never hard-depends on `cryptography`.
+        from agent_identity_registry.signing import sign_attestation
+
+        if signed_at is None:
+            signed_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        signature_multibase = sign_attestation(
+            private_key,
+            attester_air_id=attester_air_id,
+            attestation_type=attestation_type,
+            signed_at=signed_at,
+            subject_air_id=subject_air_id,
+            statement=statement,
+        )
+        return await self.create_attestation(
+            subject_air_id,
+            attester_air_id=attester_air_id,
+            attestation_type=attestation_type,
+            signed_at=signed_at,
+            signature_multibase=signature_multibase,
+            agent_secret=agent_secret,
+            statement=statement,
+        )
+
+    async def list_attestations(self, subject_air_id: str) -> AttestationList:
+        """GET /agents/{subject_air_id}/attestations — public audit trail.
+
+        Returns every attestation (active and revoked, flagged via `is_active`)
+        plus the subject's current `verified_status`.
+        """
+        data = await self._request(
+            "GET",
+            f"/agents/{subject_air_id}/attestations",
+            air_id=subject_air_id,
+        )
+        return AttestationList.model_validate(data)
+
+    async def recent_attestations(self, *, limit: int = 50) -> RecentAttestations:
+        """GET /attestations/recent — public firehose of recent active attestations.
+
+        `limit` is clamped server-side to 1..200 (default 50). Useful for live
+        dashboards and Sybil-ring spotting.
+        """
+        data = await self._request(
+            "GET",
+            "/attestations/recent",
+            params={"limit": limit},
+        )
+        return RecentAttestations.model_validate(data)
+
+    async def revoke_attestation(
+        self,
+        subject_air_id: str,
+        attestation_id: int,
+        *,
+        agent_secret: str,
+    ) -> RevokeResult:
+        """DELETE /agents/{subject_air_id}/attestations/{attestation_id} — soft-delete.
+
+        Only the ORIGINAL attester can revoke; `agent_secret` is that attester's
+        secret. Returns the subject's recomputed `verified_status`.
+        """
+        data = await self._request(
+            "DELETE",
+            f"/agents/{subject_air_id}/attestations/{attestation_id}",
+            headers={"X-Agent-Secret": agent_secret},
+            air_id=subject_air_id,
+        )
+        return RevokeResult.model_validate(data)
 
     # ------------------------------------------------------------------
     # Admin endpoints (require admin_key)

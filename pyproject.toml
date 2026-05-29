@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-identity-registry"
-version = "0.4.0"
+version = "0.5.0"
 description = "Python SDK + CLI for the Agent Identity Registry (AIR) — agentidentityregistry.org"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -31,11 +31,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Attestation signing (AIR Verified). Optional so read-only users keep the
+# tiny httpx+pydantic footprint; only signers pull in cryptography.
+signing = [
+    "cryptography>=42",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "ruff>=0.6",
     "mypy>=1.10",
+    "cryptography>=42",
 ]
 
 [project.scripts]

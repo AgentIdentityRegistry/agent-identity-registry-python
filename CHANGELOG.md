@@ -6,6 +6,27 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.0] — 2026-05-29
+
+### Added
+- **AIR Verified attestations.** Four new `AIRClient` methods wrapping the Phase 4 attestation API:
+  - `create_attestation(...)` — low-level POST; you supply a `signature_multibase` you computed yourself.
+  - `attest(...)` — high-level: canonicalizes, Ed25519-signs, and submits in one call (needs the `[signing]` extra).
+  - `list_attestations(air_id)` — public audit trail (active + revoked).
+  - `recent_attestations(limit=...)` — public firehose.
+  - `revoke_attestation(air_id, attestation_id, agent_secret=...)` — soft-delete by the original attester.
+- **`agent_identity_registry.signing` module** for client-side signing:
+  - `sign_attestation(private_key, ...)` → `signature_multibase` (`z` + base58btc of the 64-byte Ed25519 signature).
+  - `canonical_attestation_bytes(...)` — byte-exact RFC 8785 JCS of `{attester_air_id, attestation_type, signed_at, statement, subject_air_id}`, matching the Worker's `jcsCanonicalize` (keys sorted, no whitespace, `statement` always present, no NFC normalization).
+  - `load_private_key_from_seed(seed)` — Ed25519 key from a 32-byte seed (hex or raw).
+  - `VALID_ATTESTATION_TYPES` — the four lockable types.
+- New models: `Attestation`, `AttestationResult`, `AttestationList`, `RecentAttestation`, `RecentAttestations`, `RevokeResult`, `VerifiedStatus`, and `VerificationStatus`.
+- `Agent.verification_status` — the attestation-derived Verified breakdown now parses off `GET /agents/{id}` (None on older API responses).
+- 18 new unit tests: byte-exact canonicalization vector, full sign→Ed25519-verify roundtrip, and MockTransport coverage for every new client method.
+
+### Changed
+- New optional dependency extra **`signing`** (`cryptography>=42`). The core install stays `httpx` + `pydantic` only — attestation signing raises a friendly "install `[signing]`" error if the extra is missing. Read-only consumers are unaffected.
+
 ## [0.3.0] — 2026-05-28
 
 ### Added

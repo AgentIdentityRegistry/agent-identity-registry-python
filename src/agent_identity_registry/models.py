@@ -12,7 +12,7 @@ versions — forward-compatibility wins over strictness here.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
@@ -113,6 +113,9 @@ class Agent(_AirModel):
     transparency: _TransparencyInfo
     verified: bool = False
     verification_level: str
+    # AIR Verified (Phase 4+): the attestation-derived verification breakdown.
+    # None on older API responses; present since the Phase 4 attestation ship.
+    verification_status: VerificationStatus | None = None
     is_demo: bool = False
     status: str  # "active" or "deleted"
     created: datetime
@@ -210,7 +213,7 @@ class Service(BaseModel):
     compatibility signal.
     """
 
-    id: Optional[str] = Field(default=None, description="W3C did-document fragment ID (e.g. '#a2a')")
+    id: str | None = Field(default=None, description="W3C did-document fragment ID (e.g. '#a2a')")
     type: str = Field(description="Service type — e.g. 'A2AInbox', 'AIRTrustScore'")
     serviceEndpoint: HttpUrl = Field(description="The URL at which this service is reached")
 
@@ -232,7 +235,7 @@ class AgentRecord(_AirModel):
 
     air_id: str
     name: str
-    service_endpoints: Optional[List[Service]] = Field(
+    service_endpoints: list[Service] | None = Field(
         default=None,
         description="A2A service endpoint list (added in SDK v0.4.0, A2A spec §12).",
     )
@@ -358,6 +361,134 @@ class AdminRecent(_AirModel):
 
     recent_registrations: list[AdminRecentItem]
     count: int
+
+
+# ============================================================
+# ATTESTATIONS — AIR Verified (Phase 4)
+# ============================================================
+#
+# Two near-identical "verified-ness" shapes exist on the wire, by design:
+#   * VerifiedStatus    — raw computeVerifiedStatus(), embedded in attestation
+#                         write/list responses (create/list/revoke).
+#   * VerificationStatus — the richer block on GET /agents/{id}, which adds the
+#                         *_required threshold fields for display.
+# Kept as two precise models rather than one lenient one, matching the rest of
+# the SDK's per-endpoint modelling.
+
+
+class VerifiedStatus(_AirModel):
+    """`verified_status` block embedded in attestation create/list/revoke responses.
+
+    Mirrors the worker's computeVerifiedStatus(): a subject is Verified when
+    verification_score >= 300 AND distinct_whois_roots >= 3.
+    """
+
+    verified: bool
+    verification_score: int
+    distinct_whois_roots: int
+    attestation_count: int
+
+
+class VerificationStatus(_AirModel):
+    """`verification_status` block on GET /api/v1/agents/{air_id}.
+
+    Same concept as VerifiedStatus but display-oriented: `score` (not
+    `verification_score`) plus the two `*_required` thresholds so a UI can render
+    "score / required" progress without hard-coding 300 and 3.
+    """
+
+    verified: bool
+    score: int
+    score_required: int
+    attestation_count: int
+    distinct_whois_roots: int
+    distinct_whois_roots_required: int
+
+
+class Attestation(_AirModel):
+    """One row from GET /api/v1/agents/{air_id}/attestations.
+
+    Includes revoked attestations (with `revoked_at` set and `is_active` False)
+    — the full audit trail is public by design (Lock 6).
+    """
+
+    id: int
+    attester_air_id: str
+    attester_whois_root: str | None = None
+    attestation_type: str
+    statement: str = ""
+    signed_payload: str
+    signature_multibase: str
+    signed_at: datetime
+    attester_trust_at_issue: int
+    tenure_multiplier_at_issue: float
+    weight: float
+    revoked_at: datetime | None = None
+    is_active: bool
+    created_at: datetime
+
+
+class AttestationResult(_AirModel):
+    """POST /api/v1/agents/{air_id}/attestations 201 response."""
+
+    attestation_id: int
+    subject_air_id: str
+    attester_air_id: str
+    attestation_type: str
+    statement: str = ""
+    signed_at: datetime
+    attester_whois_root: str | None = None
+    attester_trust_at_issue: int
+    tenure_multiplier_at_issue: float
+    weight: float
+    verified_status: VerifiedStatus
+
+
+class AttestationList(_AirModel):
+    """GET /api/v1/agents/{air_id}/attestations response — full public audit trail."""
+
+    subject_air_id: str
+    attestations: list[Attestation] = Field(default_factory=list)
+    total: int
+    active: int
+    verified_status: VerifiedStatus
+
+
+class RecentAttestation(_AirModel):
+    """One row in the GET /api/v1/attestations/recent firehose (active only)."""
+
+    id: int
+    subject_air_id: str
+    attester_air_id: str
+    attester_whois_root: str | None = None
+    attestation_type: str
+    statement: str = ""
+    signed_at: datetime
+    weight: float
+    created_at: datetime
+
+
+class RecentAttestations(_AirModel):
+    """GET /api/v1/attestations/recent response — public firehose for dashboards."""
+
+    attestations: list[RecentAttestation] = Field(default_factory=list)
+    total: int
+    limit: int
+
+
+class RevokeResult(_AirModel):
+    """DELETE /api/v1/agents/{air_id}/attestations/{id} response."""
+
+    revoked: bool
+    attestation_id: int
+    subject_air_id: str
+    revoked_at: datetime
+    verified_status: VerifiedStatus
+
+
+# Resolve the forward reference in Agent.verification_status now that
+# VerificationStatus is defined above.
+Agent.model_rebuild()
 
 
 # ============================================================

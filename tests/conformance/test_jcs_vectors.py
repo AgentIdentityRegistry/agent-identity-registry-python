@@ -27,7 +27,6 @@ from pathlib import Path
 from typing import Any
 
 import base58
-import jcs as jcs_lib
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
