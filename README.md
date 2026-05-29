@@ -96,6 +96,95 @@ async with AIRClient() as client:
     print(update.trust_score)  # Recalculated after update
 ```
 
+## AIR Verified — attestations
+
+Since **v0.5**, agents can vouch for each other with cryptographically signed attestations. Enough independent, high-trust attestations from distinct WHOIS roots flip a subject to **Verified**. Signing needs the optional `signing` extra:
+
+```bash
+pip install 'agent-identity-registry[signing]'   # pulls in `cryptography`
+```
+
+The read-only methods below (`list_attestations`, `recent_attestations`) work without the extra — only signing does.
+
+### Sign and attest in one call
+
+`attest()` canonicalizes the payload, Ed25519-signs it, and submits it. The `agent_secret` and `private_key` are the **attester's** (you're vouching for someone else):
+
+```python
+from agent_identity_registry import AIRClient, load_private_key_from_seed
+
+key = load_private_key_from_seed("...64-char-hex-ed25519-seed...")
+
+async with AIRClient() as client:
+    result = await client.attest(
+        "AIR-SUBJ-SUBJ-SUBJ",                    # who you're vouching for
+        attester_air_id="AIR-MINE-MINE-MINE",    # you
+        attestation_type="identity_verification", # or operator_confirmation / dependency / safety_review
+        private_key=key,
+        agent_secret="...your-attester-secret...",
+        statement="Reviewed and confirmed in production.",
+    )
+    print(result.attestation_id)
+    vs = result.verified_status
+    print(vs.verified, vs.verification_score, vs.distinct_whois_roots)
+```
+
+`signed_at` defaults to the current UTC time (the same string is signed and sent, so they can never drift). Pass `signed_at=` explicitly only if you need a specific timestamp.
+
+### Bring your own signature
+
+If you sign elsewhere (HSM, external KMS), compute the `signature_multibase` yourself and use the low-level method. `canonical_attestation_bytes` gives you the exact bytes to sign:
+
+```python
+from agent_identity_registry import canonical_attestation_bytes, sign_attestation
+
+payload = canonical_attestation_bytes(
+    attester_air_id="AIR-MINE-MINE-MINE",
+    attestation_type="dependency",
+    signed_at="2026-05-29T00:00:00Z",
+    subject_air_id="AIR-SUBJ-SUBJ-SUBJ",
+    statement="",
+)
+# ... sign `payload` with your Ed25519 key, multibase-encode as "z" + base58btc ...
+
+async with AIRClient() as client:
+    await client.create_attestation(
+        "AIR-SUBJ-SUBJ-SUBJ",
+        attester_air_id="AIR-MINE-MINE-MINE",
+        attestation_type="dependency",
+        signed_at="2026-05-29T00:00:00Z",
+        signature_multibase="z...",
+        agent_secret="...your-attester-secret...",
+    )
+```
+
+### Read the trust graph (no auth, no extra)
+
+```python
+async with AIRClient() as client:
+    trail = await client.list_attestations("AIR-SUBJ-SUBJ-SUBJ")   # full public audit trail
+    print(trail.total, trail.active, trail.verified_status.verified)
+
+    feed = await client.recent_attestations(limit=50)              # firehose for dashboards
+    for a in feed.attestations:
+        print(a.subject_air_id, a.attestation_type, a.weight)
+
+    agent = await client.get_agent("AIR-SUBJ-SUBJ-SUBJ")
+    if agent.verification_status:                                  # present since the Phase 4 API
+        print(agent.verification_status.score, "/", agent.verification_status.score_required)
+```
+
+### Revoke
+
+Only the original attester can revoke, using their own secret:
+
+```python
+async with AIRClient() as client:
+    await client.revoke_attestation(
+        "AIR-SUBJ-SUBJ-SUBJ", attestation_id=7, agent_secret="...attester-secret..."
+    )
+```
+
 ## Errors
 
 All errors derive from `AirError`:
